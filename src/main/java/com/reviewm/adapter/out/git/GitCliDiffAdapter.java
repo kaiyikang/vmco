@@ -72,26 +72,11 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort,
             return List.of();
         }
 
-        List<ChangedFile> files = new ArrayList<>();
-        for (String line : output.split("\\R")) {
-            if (line.isBlank()) {
-                continue;
-            }
-            String[] parts = line.split("\\t");
-            if (parts.length < 2) {
-                continue;
-            }
-            String status = parts[0];
-            ChangeType changeType = toChangeType(status);
-            String oldPath = null;
-            String path = parts[1];
-            if ((changeType == ChangeType.RENAMED || changeType == ChangeType.COPIED) && parts.length >= 3) {
-                oldPath = parts[1];
-                path = parts[2];
-            }
-            files.add(new ChangedFile(path, oldPath, changeType, languageFor(path), hunksFor(repositoryRoot, range, path)));
-        }
-        return files;
+        return Arrays.stream(output.split("\\R"))
+            .filter(line -> !line.isBlank())
+            .map(line -> changedFileFromStatusLine(repositoryRoot, range, line))
+            .flatMap(Optional::stream)
+            .toList();
     }
 
     @Override
@@ -184,29 +169,39 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort,
     }
 
     private List<DiffHunk> parseHunks(String patch) {
-        List<DiffHunk> hunks = new ArrayList<>();
-        HunkBuilder current = null;
+        HunkParser parser = new HunkParser();
         for (String line : patch.split("\\R")) {
-            Matcher matcher = HUNK_HEADER.matcher(line);
-            if (matcher.matches()) {
-                if (current != null) {
-                    hunks.add(current.build());
-                }
-                current = new HunkBuilder(
-                    parseInt(matcher.group(1), 0),
-                    parseInt(matcher.group(2), 1),
-                    parseInt(matcher.group(3), 0),
-                    parseInt(matcher.group(4), 1),
-                    line
-                );
-            } else if (current != null) {
-                current.lines.add(line);
-            }
+            parser.accept(line);
         }
-        if (current != null) {
-            hunks.add(current.build());
+        return parser.hunks();
+    }
+
+    private Optional<ChangedFile> changedFileFromStatusLine(Path repositoryRoot, DiffRange range, String line) {
+        String[] parts = line.split("\\t");
+        if (parts.length < 2) {
+            return Optional.empty();
         }
-        return hunks;
+
+        ChangeType changeType = toChangeType(parts[0]);
+        ChangedPath changedPath = changedPath(parts, changeType);
+        return Optional.of(new ChangedFile(
+            changedPath.path(),
+            changedPath.oldPath(),
+            changeType,
+            languageFor(changedPath.path()),
+            hunksFor(repositoryRoot, range, changedPath.path())
+        ));
+    }
+
+    private ChangedPath changedPath(String[] parts, ChangeType changeType) {
+        if (isRenameOrCopy(changeType) && parts.length >= 3) {
+            return new ChangedPath(parts[2], parts[1]);
+        }
+        return new ChangedPath(parts[1], null);
+    }
+
+    private boolean isRenameOrCopy(ChangeType changeType) {
+        return changeType == ChangeType.RENAMED || changeType == ChangeType.COPIED;
     }
 
     private int parseInt(String value, int defaultValue) {
@@ -264,5 +259,52 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort,
         private DiffHunk build() {
             return new DiffHunk(oldStart, oldLines, newStart, newLines, header, lines);
         }
+    }
+
+    private final class HunkParser {
+        private final List<DiffHunk> hunks = new ArrayList<>();
+        private HunkBuilder current;
+
+        private void accept(String line) {
+            Matcher matcher = HUNK_HEADER.matcher(line);
+            if (matcher.matches()) {
+                startHunk(matcher, line);
+                return;
+            }
+            appendLine(line);
+        }
+
+        private void startHunk(Matcher matcher, String header) {
+            flushCurrent();
+            current = new HunkBuilder(
+                parseInt(matcher.group(1), 0),
+                parseInt(matcher.group(2), 1),
+                parseInt(matcher.group(3), 0),
+                parseInt(matcher.group(4), 1),
+                header
+            );
+        }
+
+        private void appendLine(String line) {
+            if (current != null) {
+                current.lines.add(line);
+            }
+        }
+
+        private List<DiffHunk> hunks() {
+            flushCurrent();
+            return List.copyOf(hunks);
+        }
+
+        private void flushCurrent() {
+            if (current == null) {
+                return;
+            }
+            hunks.add(current.build());
+            current = null;
+        }
+    }
+
+    private record ChangedPath(String path, String oldPath) {
     }
 }

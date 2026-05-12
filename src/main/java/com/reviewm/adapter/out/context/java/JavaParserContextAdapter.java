@@ -33,19 +33,8 @@ public final class JavaParserContextAdapter implements CodeContextPort {
         List<SymbolRange> symbols = scanSymbols(lines);
         Map<String, CodeContext> contexts = new LinkedHashMap<>();
         for (DiffHunk hunk : file.hunks()) {
-            int start = Math.max(1, hunk.newStart());
-            int end = Math.max(start, hunk.newEndInclusive());
-            Optional<SymbolRange> method = deepestSymbolContaining(symbols, start, end, SymbolType.METHOD);
-            Optional<SymbolRange> type = deepestSymbolContaining(symbols, start, end, SymbolType.CLASS);
-            SymbolRange selected = method.or(() -> type).orElseGet(() -> fileWindow(lines, start, end));
-            String key = selected.type + ":" + selected.name + ":" + selected.startLine + ":" + selected.endLine;
-            contexts.putIfAbsent(key, new CodeContext(
-                file.path(),
-                selected.name,
-                selected.type,
-                "Changed lines " + start + "-" + end,
-                extract(lines, selected.startLine, selected.endLine)
-            ));
+            ResolvedContext context = contextForHunk(file, lines, symbols, hunk);
+            contexts.putIfAbsent(context.key(), context.value());
         }
         return new ArrayList<>(contexts.values());
     }
@@ -53,27 +42,80 @@ public final class JavaParserContextAdapter implements CodeContextPort {
     private List<SymbolRange> scanSymbols(List<String> lines) {
         List<SymbolRange> ranges = new ArrayList<>();
         for (int index = 0; index < lines.size(); index++) {
-            String line = stripLineComment(lines.get(index)).strip();
-            if (line.isBlank()) {
-                continue;
-            }
-            Matcher typeMatcher = TYPE_PATTERN.matcher(line);
-            if (typeMatcher.find()) {
-                int start = index + 1;
-                int end = findBlockEnd(lines, index);
-                ranges.add(new SymbolRange(typeMatcher.group(2), SymbolType.CLASS, start, end));
-                continue;
-            }
-            if (looksLikeMethodDeclaration(line)) {
-                Matcher methodMatcher = METHOD_NAME_PATTERN.matcher(line);
-                if (methodMatcher.find()) {
-                    int start = includeLeadingAnnotations(lines, index) + 1;
-                    int end = findBlockEnd(lines, index);
-                    ranges.add(new SymbolRange(methodMatcher.group(1), SymbolType.METHOD, start, end));
-                }
-            }
+            scanSymbol(lines, index).ifPresent(ranges::add);
         }
         return ranges;
+    }
+
+    private ResolvedContext contextForHunk(
+        ChangedFile file,
+        List<String> lines,
+        List<SymbolRange> symbols,
+        DiffHunk hunk
+    ) {
+        int start = Math.max(1, hunk.newStart());
+        int end = Math.max(start, hunk.newEndInclusive());
+        SymbolRange selected = symbolForRange(lines, symbols, start, end);
+        CodeContext context = new CodeContext(
+            file.path(),
+            selected.name,
+            selected.type,
+            "Changed lines " + start + "-" + end,
+            extract(lines, selected.startLine, selected.endLine)
+        );
+        return new ResolvedContext(contextKey(selected), context);
+    }
+
+    private String contextKey(SymbolRange symbol) {
+        return symbol.type + ":" + symbol.name + ":" + symbol.startLine + ":" + symbol.endLine;
+    }
+
+    private SymbolRange symbolForRange(List<String> lines, List<SymbolRange> symbols, int startLine, int endLine) {
+        Optional<SymbolRange> method = deepestSymbolContaining(symbols, startLine, endLine, SymbolType.METHOD);
+        Optional<SymbolRange> type = deepestSymbolContaining(symbols, startLine, endLine, SymbolType.CLASS);
+        return method.or(() -> type).orElseGet(() -> fileWindow(lines, startLine, endLine));
+    }
+
+    private Optional<SymbolRange> scanSymbol(List<String> lines, int index) {
+        String line = stripLineComment(lines.get(index)).strip();
+        if (line.isBlank()) {
+            return Optional.empty();
+        }
+
+        Optional<SymbolRange> type = typeSymbol(lines, index, line);
+        if (type.isPresent()) {
+            return type;
+        }
+        return methodSymbol(lines, index, line);
+    }
+
+    private Optional<SymbolRange> typeSymbol(List<String> lines, int index, String line) {
+        Matcher matcher = TYPE_PATTERN.matcher(line);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        return Optional.of(new SymbolRange(
+            matcher.group(2),
+            SymbolType.CLASS,
+            index + 1,
+            findBlockEnd(lines, index)
+        ));
+    }
+
+    private Optional<SymbolRange> methodSymbol(List<String> lines, int index, String line) {
+        if (!looksLikeMethodDeclaration(line)) {
+            return Optional.empty();
+        }
+        Matcher matcher = METHOD_NAME_PATTERN.matcher(line);
+        if (!matcher.find()) {
+            return Optional.empty();
+        }
+        return Optional.of(new SymbolRange(
+            matcher.group(1),
+            SymbolType.METHOD,
+            includeLeadingAnnotations(lines, index) + 1,
+            findBlockEnd(lines, index)
+        ));
     }
 
     private boolean looksLikeMethodDeclaration(String line) {
@@ -110,21 +152,11 @@ public final class JavaParserContextAdapter implements CodeContextPort {
     }
 
     private int findBlockEnd(List<String> lines, int startIndex) {
-        int depth = 0;
-        boolean seenOpenBrace = false;
+        BlockDepth blockDepth = new BlockDepth();
         for (int index = startIndex; index < lines.size(); index++) {
             String line = stripStringLiterals(stripLineComment(lines.get(index)));
-            for (int offset = 0; offset < line.length(); offset++) {
-                char ch = line.charAt(offset);
-                if (ch == '{') {
-                    depth++;
-                    seenOpenBrace = true;
-                } else if (ch == '}') {
-                    depth--;
-                    if (seenOpenBrace && depth <= 0) {
-                        return index + 1;
-                    }
-                }
+            if (blockDepth.closesBlock(line)) {
+                return index + 1;
             }
         }
         return Math.min(lines.size(), startIndex + 80);
@@ -165,35 +197,81 @@ public final class JavaParserContextAdapter implements CodeContextPort {
     }
 
     private String stripStringLiterals(String line) {
-        StringBuilder builder = new StringBuilder(line.length());
-        boolean inString = false;
-        boolean escaped = false;
-        for (int index = 0; index < line.length(); index++) {
-            char ch = line.charAt(index);
-            if (inString) {
-                if (escaped) {
-                    escaped = false;
-                } else if (ch == '\\') {
-                    escaped = true;
-                } else if (ch == '"') {
-                    inString = false;
-                }
-                builder.append(' ');
-            } else {
-                if (ch == '"') {
-                    inString = true;
-                    builder.append(' ');
-                } else {
-                    builder.append(ch);
+        return new StringLiteralMasker().mask(line);
+    }
+
+    private static final class BlockDepth {
+        private int depth;
+        private boolean seenOpenBrace;
+
+        private boolean closesBlock(String line) {
+            for (int offset = 0; offset < line.length(); offset++) {
+                if (accept(line.charAt(offset))) {
+                    return true;
                 }
             }
+            return false;
         }
-        return builder.toString();
+
+        private boolean accept(char ch) {
+            if (ch == '{') {
+                depth++;
+                seenOpenBrace = true;
+                return false;
+            }
+            if (ch != '}') {
+                return false;
+            }
+            depth--;
+            return seenOpenBrace && depth <= 0;
+        }
+    }
+
+    private static final class StringLiteralMasker {
+        private boolean inString;
+        private boolean escaped;
+
+        private String mask(String line) {
+            StringBuilder builder = new StringBuilder(line.length());
+            for (int index = 0; index < line.length(); index++) {
+                builder.append(mask(line.charAt(index)));
+            }
+            return builder.toString();
+        }
+
+        private char mask(char ch) {
+            if (inString) {
+                return maskStringCharacter(ch);
+            }
+            return maskCodeCharacter(ch);
+        }
+
+        private char maskStringCharacter(char ch) {
+            if (escaped) {
+                escaped = false;
+            } else if (ch == '\\') {
+                escaped = true;
+            } else if (ch == '"') {
+                inString = false;
+            }
+            return ' ';
+        }
+
+        private char maskCodeCharacter(char ch) {
+            if (ch == '"') {
+                inString = true;
+                return ' ';
+            }
+            return ch;
+        }
     }
 
     private record SymbolRange(String name, SymbolType type, int startLine, int endLine) {
         int length() {
             return endLine - startLine;
         }
+    }
+
+    private record ResolvedContext(String key, CodeContext value) {
     }
 }

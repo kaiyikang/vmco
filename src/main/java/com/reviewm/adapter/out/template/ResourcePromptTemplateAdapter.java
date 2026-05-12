@@ -68,36 +68,40 @@ public final class ResourcePromptTemplateAdapter implements PromptTemplatePort {
     }
 
     private String renderContexts(PromptPackage promptPackage) {
-        StringBuilder builder = new StringBuilder();
+        return (renderContextBody(promptPackage) + renderWarnings(promptPackage)).stripTrailing();
+    }
+
+    private String renderContextBody(PromptPackage promptPackage) {
         if (promptPackage.contexts().isEmpty()) {
-            builder.append("- No extra code context collected.");
-        } else {
-            for (CodeContext context : promptPackage.contexts()) {
-                builder.append("### ")
-                    .append(context.symbolType())
-                    .append(" ")
-                    .append(context.filePath())
-                    .append(" :: ")
-                    .append(context.symbolName())
-                    .append(System.lineSeparator())
-                    .append("Reason: ")
-                    .append(context.reason())
-                    .append(System.lineSeparator())
-                    .append("```java")
-                    .append(System.lineSeparator())
-                    .append(context.content())
-                    .append(System.lineSeparator())
-                    .append("```")
-                    .append(System.lineSeparator())
-                    .append(System.lineSeparator());
-            }
+            return "- No extra code context collected.";
         }
-        if (!promptPackage.warnings().isEmpty()) {
-            builder.append(System.lineSeparator()).append("Warnings:").append(System.lineSeparator());
-            for (String warning : promptPackage.warnings()) {
-                builder.append("- ").append(warning).append(System.lineSeparator());
-            }
+        return promptPackage.contexts().stream()
+            .map(this::renderContext)
+            .collect(Collectors.joining(System.lineSeparator() + System.lineSeparator()));
+    }
+
+    private String renderContext(CodeContext context) {
+        return "### " + context.symbolType() + " " + context.filePath() + " :: " + context.symbolName()
+            + System.lineSeparator()
+            + "Reason: " + context.reason()
+            + System.lineSeparator()
+            + "```java"
+            + System.lineSeparator()
+            + context.content()
+            + System.lineSeparator()
+            + "```";
+    }
+
+    private String renderWarnings(PromptPackage promptPackage) {
+        if (promptPackage.warnings().isEmpty()) {
+            return "";
         }
-        return builder.toString().stripTrailing();
+        return System.lineSeparator()
+            + System.lineSeparator()
+            + "Warnings:"
+            + System.lineSeparator()
+            + promptPackage.warnings().stream()
+                .map(warning -> "- " + warning)
+                .collect(Collectors.joining(System.lineSeparator()));
     }
 }
