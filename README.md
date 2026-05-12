@@ -52,6 +52,10 @@ Common examples:
 
 `reviewm prompt` is also accepted and behaves the same as `reviewm`.
 
+## Design notes
+
+- [Review quality feedback loop](docs/review-quality-feedback-loop.md)
+
 ## CLI reference
 
 ```text
