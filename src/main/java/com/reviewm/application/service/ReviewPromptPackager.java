@@ -14,6 +14,7 @@ import com.reviewm.domain.model.PromptPackage;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 public final class ReviewPromptPackager implements PackageReviewPromptUseCase {
     private final GitDiffPort gitDiffPort;
@@ -55,22 +56,8 @@ public final class ReviewPromptPackager implements PackageReviewPromptUseCase {
         progressReporter.info("Collecting unified diff...");
         String diff = gitDiffPort.getUnifiedDiff(command.repositoryRoot(), range);
 
-        List<CodeContext> contexts = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
-        if (command.profile().includeJavaContext()) {
-            progressReporter.info("Collecting Java context...");
-            for (ChangedFile file : changedFiles) {
-                for (CodeContextPort contextPort : contextPorts) {
-                    if (contextPort.supports(file)) {
-                        sourceFilePort.readLines(command.repositoryRoot(), range.currentBranch(), file.path())
-                            .ifPresentOrElse(
-                                lines -> contexts.addAll(contextPort.collect(file, lines)),
-                                () -> warnings.add("Unable to read committed source for context: " + file.path())
-                            );
-                    }
-                }
-            }
-        }
+        List<CodeContext> contexts = collectContexts(command, range, changedFiles, warnings);
         if (command.profile().includeCallers()) {
             warnings.add("Caller context is not implemented in the first version.");
         }
@@ -91,5 +78,57 @@ public final class ReviewPromptPackager implements PackageReviewPromptUseCase {
             warnings
         );
         return packageData.withRenderedPrompt(promptTemplatePort.render(packageData, command.profile()));
+    }
+
+    private List<CodeContext> collectContexts(
+        PackageReviewPromptCommand command,
+        DiffRange range,
+        List<ChangedFile> changedFiles,
+        List<String> warnings
+    ) {
+        if (!command.profile().includeJavaContext()) {
+            return List.of();
+        }
+
+        progressReporter.info("Collecting Java context...");
+        List<CodeContext> contexts = new ArrayList<>();
+        for (ChangedFile file : changedFiles) {
+            contexts.addAll(collectFileContexts(command, range, file, warnings));
+        }
+        return contexts;
+    }
+
+    private List<CodeContext> collectFileContexts(
+        PackageReviewPromptCommand command,
+        DiffRange range,
+        ChangedFile file,
+        List<String> warnings
+    ) {
+        List<CodeContextPort> supportedPorts = supportedContextPorts(file);
+        if (supportedPorts.isEmpty()) {
+            return List.of();
+        }
+
+        Optional<List<String>> sourceLines = sourceFilePort.readLines(
+            command.repositoryRoot(),
+            range.currentBranch(),
+            file.path()
+        );
+        if (sourceLines.isEmpty()) {
+            warnings.add("Unable to read committed source for context: " + file.path());
+            return List.of();
+        }
+
+        List<CodeContext> contexts = new ArrayList<>();
+        for (CodeContextPort contextPort : supportedPorts) {
+            contexts.addAll(contextPort.collect(file, sourceLines.get()));
+        }
+        return contexts;
+    }
+
+    private List<CodeContextPort> supportedContextPorts(ChangedFile file) {
+        return contextPorts.stream()
+            .filter(contextPort -> contextPort.supports(file))
+            .toList();
     }
 }
