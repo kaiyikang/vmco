@@ -125,7 +125,7 @@ public final class ReviewmCommand {
               --base <branch>                Base branch/ref, default: auto
               --current <branch>             Current branch/ref, default: current HEAD branch
               --template <name>              Prompt template, default: default-review
-              --language <language>          Review output language, default: zh-CN
+              --language <language>          Review output language, default: en-US
               --focus <a,b,c>                Review focus list
               --max-context-chars <n>        Java context budget, default: 16000
               --no-context                   Do not include Java method/class context
@@ -146,7 +146,7 @@ public final class ReviewmCommand {
         private String baseBranch = "auto";
         private String currentBranch;
         private String templateName = "default-review";
-        private String language = "zh-CN";
+        private String language = "en-US";
         private List<ReviewFocus> focuses = List.of(
             ReviewFocus.CORRECTNESS,
             ReviewFocus.REGRESSION,
