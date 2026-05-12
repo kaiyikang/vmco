@@ -7,10 +7,6 @@ import com.reviewm.domain.model.CodeContext;
 import com.reviewm.domain.model.DiffHunk;
 import com.reviewm.domain.model.SymbolType;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -33,34 +29,25 @@ public final class JavaParserContextAdapter implements CodeContextPort {
     }
 
     @Override
-    public List<CodeContext> collect(Path repositoryRoot, ChangedFile file) {
-        Path source = repositoryRoot.resolve(file.path()).normalize();
-        if (!Files.isRegularFile(source)) {
-            return List.of();
+    public List<CodeContext> collect(ChangedFile file, List<String> lines) {
+        List<SymbolRange> symbols = scanSymbols(lines);
+        Map<String, CodeContext> contexts = new LinkedHashMap<>();
+        for (DiffHunk hunk : file.hunks()) {
+            int start = Math.max(1, hunk.newStart());
+            int end = Math.max(start, hunk.newEndInclusive());
+            Optional<SymbolRange> method = deepestSymbolContaining(symbols, start, end, SymbolType.METHOD);
+            Optional<SymbolRange> type = deepestSymbolContaining(symbols, start, end, SymbolType.CLASS);
+            SymbolRange selected = method.or(() -> type).orElseGet(() -> fileWindow(lines, start, end));
+            String key = selected.type + ":" + selected.name + ":" + selected.startLine + ":" + selected.endLine;
+            contexts.putIfAbsent(key, new CodeContext(
+                file.path(),
+                selected.name,
+                selected.type,
+                "Changed lines " + start + "-" + end,
+                extract(lines, selected.startLine, selected.endLine)
+            ));
         }
-        try {
-            List<String> lines = Files.readAllLines(source, StandardCharsets.UTF_8);
-            List<SymbolRange> symbols = scanSymbols(lines);
-            Map<String, CodeContext> contexts = new LinkedHashMap<>();
-            for (DiffHunk hunk : file.hunks()) {
-                int start = Math.max(1, hunk.newStart());
-                int end = Math.max(start, hunk.newEndInclusive());
-                Optional<SymbolRange> method = deepestSymbolContaining(symbols, start, end, SymbolType.METHOD);
-                Optional<SymbolRange> type = deepestSymbolContaining(symbols, start, end, SymbolType.CLASS);
-                SymbolRange selected = method.or(() -> type).orElseGet(() -> fileWindow(lines, start, end));
-                String key = selected.type + ":" + selected.name + ":" + selected.startLine + ":" + selected.endLine;
-                contexts.putIfAbsent(key, new CodeContext(
-                    file.path(),
-                    selected.name,
-                    selected.type,
-                    "Changed lines " + start + "-" + end,
-                    extract(lines, selected.startLine, selected.endLine)
-                ));
-            }
-            return new ArrayList<>(contexts.values());
-        } catch (IOException e) {
-            return List.of();
-        }
+        return new ArrayList<>(contexts.values());
     }
 
     private List<SymbolRange> scanSymbols(List<String> lines) {

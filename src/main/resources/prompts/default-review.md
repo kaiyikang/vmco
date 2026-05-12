@@ -16,7 +16,6 @@ Diff 范围：
 - Current branch: {{currentBranch}}
 - Merge base: {{mergeBaseCommit}}
 - Head: {{headCommit}}
-- Includes working tree: {{includesWorkingTree}}
 
 变更文件：
 {{changedFiles}}

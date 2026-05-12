@@ -44,6 +44,7 @@ public final class ReviewmCommand {
             }
 
             Path repositoryRoot = repositoryRootPort.resolveRepositoryRoot(Path.of("").toAbsolutePath());
+            System.err.println("reviewm: using repository " + repositoryRoot);
             PromptProfile profile = new PromptProfile(
                 options.templateName,
                 options.language,
@@ -62,6 +63,7 @@ public final class ReviewmCommand {
             );
 
             PromptOutputPort output = outputPort(options);
+            System.err.println("reviewm: writing prompt to " + outputDescription(options) + "...");
             output.write(promptPackage.renderedPrompt());
             printSummary(options, promptPackage);
             return 0;
@@ -70,6 +72,10 @@ public final class ReviewmCommand {
             System.err.println("Run reviewm --help for usage.");
             return 2;
         }
+    }
+
+    private String outputDescription(CliOptions options) {
+        return "file".equals(options.outputTarget) ? options.outputFile : options.outputTarget;
     }
 
     private PromptOutputPort outputPort(CliOptions options) {
@@ -107,8 +113,9 @@ public final class ReviewmCommand {
               reviewm prompt [options]
 
             Default:
-              Compare the current working tree with origin/main, origin/master,
-              main, or master, render a review prompt, and copy it to the clipboard.
+              Fetch origin, compare latest origin/main or origin/master with the
+              current branch HEAD, render a review prompt, and copy it to the clipboard.
+              Uncommitted working tree changes are ignored by default.
 
             Options:
               --copy                         Copy prompt to clipboard (default)
@@ -116,7 +123,7 @@ public final class ReviewmCommand {
               --output <clipboard|console|file>
               --file <path>                  Required when --output file is used
               --base <branch>                Base branch/ref, default: auto
-              --current <branch>             Current branch/ref, default: HEAD branch
+              --current <branch>             Current branch/ref, default: current HEAD branch
               --template <name>              Prompt template, default: default-review
               --language <language>          Review output language, default: zh-CN
               --focus <a,b,c>                Review focus list

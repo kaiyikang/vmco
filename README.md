@@ -2,19 +2,32 @@
 
 Review Prompt Packager for Java projects.
 
-The default command packages the current working tree diff against `main` or
-`master`, adds lightweight Java context, renders a review prompt, and copies it
-to the clipboard. Staged and unstaged changes are included by default.
+The default command fetches `origin`, packages the committed current branch
+diff against the latest `origin/main` or `origin/master`, adds lightweight Java
+context, renders a review prompt, and copies it to the clipboard. Staged and
+unstaged working tree changes are ignored by default, matching the code that
+would be compared when opening a pull request from the branch.
 
 ```bash
 mvn -q -DskipTests package
 ./bin/reviewm
 ```
 
+The script can be called from another repository without changing directories
+to the tool checkout:
+
+```bash
+cd /path/to/java-project
+bash /path/to/reviewm/bin/reviewm
+```
+
+`reviewm` uses the caller's current working directory to find the target Git
+repository.
+
 Default behavior:
 
 ```text
-current working tree vs origin/main, origin/master, main, or master
+latest origin/main or origin/master vs current branch HEAD
 -> collect git diff
 -> collect changed Java method/class context
 -> render prompt

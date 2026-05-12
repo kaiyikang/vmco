@@ -4,7 +4,6 @@ public record DiffRange(
     String baseBranch,
     String currentBranch,
     String mergeBaseCommit,
-    String headCommit,
-    boolean compareWithWorkingTree
+    String headCommit
 ) {
 }

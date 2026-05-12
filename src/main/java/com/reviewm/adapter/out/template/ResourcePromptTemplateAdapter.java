@@ -26,7 +26,6 @@ public final class ResourcePromptTemplateAdapter implements PromptTemplatePort {
             .replace("{{currentBranch}}", promptPackage.diffRange().currentBranch())
             .replace("{{mergeBaseCommit}}", promptPackage.diffRange().mergeBaseCommit())
             .replace("{{headCommit}}", promptPackage.diffRange().headCommit())
-            .replace("{{includesWorkingTree}}", Boolean.toString(promptPackage.diffRange().compareWithWorkingTree()))
             .replace("{{changedFiles}}", renderChangedFiles(promptPackage))
             .replace("{{contexts}}", renderContexts(promptPackage))
             .replace("{{diff}}", promptPackage.fullDiff());

@@ -2,6 +2,7 @@ package com.reviewm.adapter.out.git;
 
 import com.reviewm.application.port.out.GitDiffPort;
 import com.reviewm.application.port.out.RepositoryRootPort;
+import com.reviewm.application.port.out.SourceFilePort;
 import com.reviewm.domain.model.ChangeType;
 import com.reviewm.domain.model.ChangedFile;
 import com.reviewm.domain.model.DiffHunk;
@@ -10,12 +11,14 @@ import com.reviewm.shared.ReviewmException;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort {
+public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort, SourceFilePort {
     private static final List<String> BASE_BRANCH_CANDIDATES = List.of(
         "origin/main",
         "origin/master",
@@ -39,33 +42,32 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort 
     }
 
     @Override
+    public void refreshBase(Path repositoryRoot, String baseBranch) {
+        if (!remoteExists(repositoryRoot, "origin")) {
+            return;
+        }
+        git.run(repositoryRoot, "fetch", "--prune", "origin");
+    }
+
+    @Override
     public DiffRange resolveDiffRange(Path repositoryRoot, String baseBranch, String currentBranch) {
         String resolvedBase = resolveBaseBranch(repositoryRoot, baseBranch);
         String resolvedCurrent = resolveCurrentBranch(repositoryRoot, currentBranch);
         String headCommit = git.run(repositoryRoot, "rev-parse", resolvedCurrent);
         String mergeBase = git.run(repositoryRoot, "merge-base", resolvedBase, resolvedCurrent);
-        boolean compareWithWorkingTree = currentBranch == null || currentBranch.isBlank();
-        return new DiffRange(resolvedBase, resolvedCurrent, mergeBase, headCommit, compareWithWorkingTree);
+        return new DiffRange(resolvedBase, resolvedCurrent, mergeBase, headCommit);
     }
 
     @Override
     public List<ChangedFile> getChangedFiles(Path repositoryRoot, DiffRange range) {
-        String output = range.compareWithWorkingTree()
-            ? git.run(
-                repositoryRoot,
-                "diff",
-                "--name-status",
-                "--find-renames",
-                range.mergeBaseCommit()
-            )
-            : git.run(
-                repositoryRoot,
-                "diff",
-                "--name-status",
-                "--find-renames",
-                range.mergeBaseCommit(),
-                range.currentBranch()
-            );
+        String output = git.run(
+            repositoryRoot,
+            "diff",
+            "--name-status",
+            "--find-renames",
+            range.mergeBaseCommit(),
+            range.currentBranch()
+        );
         if (output.isBlank()) {
             return List.of();
         }
@@ -94,22 +96,27 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort 
 
     @Override
     public String getUnifiedDiff(Path repositoryRoot, DiffRange range) {
-        return range.compareWithWorkingTree()
-            ? git.run(
-                repositoryRoot,
-                "diff",
-                "--find-renames",
-                "--unified=80",
-                range.mergeBaseCommit()
-            )
-            : git.run(
-                repositoryRoot,
-                "diff",
-                "--find-renames",
-                "--unified=80",
-                range.mergeBaseCommit(),
-                range.currentBranch()
-            );
+        return git.run(
+            repositoryRoot,
+            "diff",
+            "--find-renames",
+            "--unified=80",
+            range.mergeBaseCommit(),
+            range.currentBranch()
+        );
+    }
+
+    @Override
+    public Optional<List<String>> readLines(Path repositoryRoot, String ref, String path) {
+        GitCommandRunner.CommandResult result = git.runAllowingFailure(
+            repositoryRoot,
+            "show",
+            ref + ":" + path
+        );
+        if (result.exitCode() != 0) {
+            return Optional.empty();
+        }
+        return Optional.of(Arrays.asList(result.output().split("\\R", -1)));
     }
 
     private String resolveBaseBranch(Path repositoryRoot, String requestedBase) {
@@ -155,27 +162,21 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort 
         ).exitCode() == 0;
     }
 
+    private boolean remoteExists(Path repositoryRoot, String remote) {
+        return git.runAllowingFailure(repositoryRoot, "remote", "get-url", remote).exitCode() == 0;
+    }
+
     private List<DiffHunk> hunksFor(Path repositoryRoot, DiffRange range, String path) {
-        GitCommandRunner.CommandResult result = range.compareWithWorkingTree()
-            ? git.runAllowingFailure(
-                repositoryRoot,
-                "diff",
-                "--unified=0",
-                "--no-ext-diff",
-                range.mergeBaseCommit(),
-                "--",
-                path
-            )
-            : git.runAllowingFailure(
-                repositoryRoot,
-                "diff",
-                "--unified=0",
-                "--no-ext-diff",
-                range.mergeBaseCommit(),
-                range.currentBranch(),
-                "--",
-                path
-            );
+        GitCommandRunner.CommandResult result = git.runAllowingFailure(
+            repositoryRoot,
+            "diff",
+            "--unified=0",
+            "--no-ext-diff",
+            range.mergeBaseCommit(),
+            range.currentBranch(),
+            "--",
+            path
+        );
         if (result.exitCode() != 0 || result.output().isBlank()) {
             return List.of();
         }

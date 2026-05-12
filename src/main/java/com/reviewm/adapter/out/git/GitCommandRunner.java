@@ -13,7 +13,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 public final class GitCommandRunner {
-    private static final Duration TIMEOUT = Duration.ofSeconds(30);
+    private static final Duration TIMEOUT = Duration.ofMinutes(2);
 
     public String run(Path workingDirectory, String... args) {
         CommandResult result = runAllowingFailure(workingDirectory, args);
