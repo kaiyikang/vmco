@@ -34,19 +34,69 @@ latest origin/main or origin/master vs current branch HEAD
 -> copy prompt to clipboard
 ```
 
-Useful options:
+Common examples:
 
 ```bash
 ./bin/reviewm --console
 ./bin/reviewm --copy
 ./bin/reviewm --base main
+./bin/reviewm --current feature/my-branch
 ./bin/reviewm --template default-review
+./bin/reviewm --language en-US
+./bin/reviewm --focus correctness,regression,tests
 ./bin/reviewm --max-context-chars 24000
 ./bin/reviewm --no-context
+./bin/reviewm --include-callers
 ./bin/reviewm --output file --file /tmp/review-prompt.md
 ```
 
 `reviewm prompt` is also accepted and behaves the same as `reviewm`.
+
+## CLI reference
+
+```text
+reviewm [options]
+reviewm prompt [options]
+```
+
+Commands:
+
+| Command | Description |
+| --- | --- |
+| `reviewm` | Default command. Packages a PR-style review prompt and copies it to the clipboard. |
+| `reviewm prompt` | Explicit form of the default command. Behaves the same as `reviewm`. |
+| `reviewm review` | Reserved for future direct LLM client execution. Not available in the first version. |
+
+Options:
+
+| Option | Default | Description |
+| --- | --- | --- |
+| `--copy` | enabled | Copy the rendered prompt to the clipboard. |
+| `--console` | disabled | Print the rendered prompt to stdout. |
+| `--output <clipboard\|console\|file>` | `clipboard` | Select the output target. |
+| `--file <path>` | none | Output file path. Required when `--output file` is used. |
+| `--base <branch>` | `auto` | Base branch/ref. Auto tries `origin/main`, `origin/master`, `main`, then `master`. |
+| `--current <branch>` | current HEAD branch | Current branch/ref to compare. |
+| `--template <name>` | `default-review` | Prompt template name from `src/main/resources/prompts/<name>.md`. |
+| `--language <language>` | `en-US` | Language instruction passed into the prompt. |
+| `--focus <a,b,c>` | `correctness,regression,tests,null-safety` | Comma-separated review focus list. |
+| `--max-context-chars <n>` | `16000` | Maximum character budget for collected Java context. |
+| `--no-context` | disabled | Disable Java method/class context collection. |
+| `--include-callers` | disabled | Request caller context. In v0.1 this is reserved and emits a warning. |
+| `-h`, `--help` | disabled | Show CLI help. |
+
+Focus values:
+
+```text
+correctness
+regression
+tests
+null-safety
+concurrency
+performance
+security
+api-compatibility
+```
 
 First-version scope:
 
