@@ -7,9 +7,9 @@ import java.nio.file.Path;
 import java.util.List;
 
 public interface GitDiffPort {
-    void refreshBase(Path repositoryRoot, String baseBranch);
+    void refreshBase(Path repositoryRoot);
 
-    DiffRange resolveDiffRange(Path repositoryRoot, String baseBranch, String currentBranch);
+    DiffRange resolveDiffRange(Path repositoryRoot);
 
     List<ChangedFile> getChangedFiles(Path repositoryRoot, DiffRange range);
 

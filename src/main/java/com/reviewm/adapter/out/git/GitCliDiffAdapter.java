@@ -20,10 +20,10 @@ import java.util.regex.Pattern;
 
 public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort, SourceFilePort {
     private static final List<String> BASE_BRANCH_CANDIDATES = List.of(
-        "origin/main",
         "origin/master",
-        "main",
-        "master"
+        "origin/main",
+        "master",
+        "main"
     );
     private static final Pattern HUNK_HEADER = Pattern.compile(
         "^@@ -(\\d+)(?:,(\\d+))? \\+(\\d+)(?:,(\\d+))? @@.*$"
@@ -42,7 +42,7 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort,
     }
 
     @Override
-    public void refreshBase(Path repositoryRoot, String baseBranch) {
+    public void refreshBase(Path repositoryRoot) {
         if (!remoteExists(repositoryRoot, "origin")) {
             return;
         }
@@ -50,9 +50,9 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort,
     }
 
     @Override
-    public DiffRange resolveDiffRange(Path repositoryRoot, String baseBranch, String currentBranch) {
-        String resolvedBase = resolveBaseBranch(repositoryRoot, baseBranch);
-        String resolvedCurrent = resolveCurrentBranch(repositoryRoot, currentBranch);
+    public DiffRange resolveDiffRange(Path repositoryRoot) {
+        String resolvedBase = resolveBaseBranch(repositoryRoot);
+        String resolvedCurrent = resolveCurrentBranch(repositoryRoot);
         String headCommit = git.run(repositoryRoot, "rev-parse", resolvedCurrent);
         String mergeBase = git.run(repositoryRoot, "merge-base", resolvedBase, resolvedCurrent);
         return new DiffRange(resolvedBase, resolvedCurrent, mergeBase, headCommit);
@@ -104,37 +104,23 @@ public final class GitCliDiffAdapter implements GitDiffPort, RepositoryRootPort,
         return Optional.of(Arrays.asList(result.output().split("\\R", -1)));
     }
 
-    private String resolveBaseBranch(Path repositoryRoot, String requestedBase) {
-        if (requestedBase != null && !requestedBase.isBlank() && !"auto".equalsIgnoreCase(requestedBase)) {
-            ensureRefExists(repositoryRoot, requestedBase);
-            return requestedBase;
-        }
+    private String resolveBaseBranch(Path repositoryRoot) {
         for (String candidate : BASE_BRANCH_CANDIDATES) {
             if (refExists(repositoryRoot, candidate)) {
                 return candidate;
             }
         }
-        throw new ReviewmException("Unable to find a base branch. Tried: "
+        throw new ReviewmException("Unable to find master or main. Tried: "
             + String.join(", ", BASE_BRANCH_CANDIDATES)
-            + ". Pass one explicitly with --base <branch>.");
+            + ".");
     }
 
-    private String resolveCurrentBranch(Path repositoryRoot, String requestedCurrent) {
-        if (requestedCurrent != null && !requestedCurrent.isBlank()) {
-            ensureRefExists(repositoryRoot, requestedCurrent);
-            return requestedCurrent;
-        }
+    private String resolveCurrentBranch(Path repositoryRoot) {
         String branch = git.run(repositoryRoot, "rev-parse", "--abbrev-ref", "HEAD");
         if ("HEAD".equals(branch)) {
             return "HEAD";
         }
         return branch;
-    }
-
-    private void ensureRefExists(Path repositoryRoot, String ref) {
-        if (!refExists(repositoryRoot, ref)) {
-            throw new ReviewmException("Git ref does not exist: " + ref);
-        }
     }
 
     private boolean refExists(Path repositoryRoot, String ref) {

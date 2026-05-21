@@ -18,7 +18,7 @@ public final class ResourcePromptTemplateAdapter implements PromptTemplatePort {
 
     @Override
     public String render(PromptPackage promptPackage, PromptProfile profile) {
-        String template = loadTemplate(profile.templateName());
+        String template = loadTemplate();
         return template
             .replace("{{language}}", profile.language())
             .replace("{{focuses}}", renderFocuses(profile))
@@ -31,17 +31,16 @@ public final class ResourcePromptTemplateAdapter implements PromptTemplatePort {
             .replace("{{diff}}", promptPackage.fullDiff());
     }
 
-    private String loadTemplate(String name) {
-        String resolvedName = (name == null || name.isBlank()) ? DEFAULT_TEMPLATE : name;
-        String resourceName = "prompts/" + resolvedName + ".md";
+    private String loadTemplate() {
+        String resourceName = "prompts/" + DEFAULT_TEMPLATE + ".md";
         ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
         try (InputStream inputStream = classLoader.getResourceAsStream(resourceName)) {
             if (inputStream == null) {
-                throw new ReviewmException("Prompt template not found: " + resolvedName);
+                throw new ReviewmException("Prompt template not found: " + DEFAULT_TEMPLATE);
             }
             return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
-            throw new ReviewmException("Unable to read prompt template: " + resolvedName, e);
+            throw new ReviewmException("Unable to read prompt template: " + DEFAULT_TEMPLATE, e);
         }
     }
 

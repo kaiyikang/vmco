@@ -32,7 +32,7 @@ public final class ClipboardOutputAdapter implements PromptOutputPort {
             writeToCommand(content, "xsel", "--clipboard", "--input");
             return;
         }
-        throw new ReviewmException("No supported clipboard command found. Use --console or --output file.");
+        throw new ReviewmException("No supported clipboard command found.");
     }
 
     private void writeToCommand(String content, String... command) {

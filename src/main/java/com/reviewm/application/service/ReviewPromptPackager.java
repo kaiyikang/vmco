@@ -43,14 +43,10 @@ public final class ReviewPromptPackager implements PackageReviewPromptUseCase {
     @Override
     public PromptPackage packagePrompt(PackageReviewPromptCommand command) {
         progressReporter.info("Fetching latest base branch...");
-        gitDiffPort.refreshBase(command.repositoryRoot(), command.baseBranch());
+        gitDiffPort.refreshBase(command.repositoryRoot());
 
         progressReporter.info("Resolving diff range...");
-        DiffRange range = gitDiffPort.resolveDiffRange(
-            command.repositoryRoot(),
-            command.baseBranch(),
-            command.currentBranch()
-        );
+        DiffRange range = gitDiffPort.resolveDiffRange(command.repositoryRoot());
         progressReporter.info("Collecting changed files...");
         List<ChangedFile> changedFiles = gitDiffPort.getChangedFiles(command.repositoryRoot(), range);
         progressReporter.info("Collecting unified diff...");
@@ -58,9 +54,6 @@ public final class ReviewPromptPackager implements PackageReviewPromptUseCase {
 
         List<String> warnings = new ArrayList<>();
         List<CodeContext> contexts = collectContexts(command, range, changedFiles, warnings);
-        if (command.profile().includeCallers()) {
-            warnings.add("Caller context is not implemented in the first version.");
-        }
 
         ContextBudgetResult budgetResult = contextBudgetService.limit(
             contexts,
@@ -86,10 +79,6 @@ public final class ReviewPromptPackager implements PackageReviewPromptUseCase {
         List<ChangedFile> changedFiles,
         List<String> warnings
     ) {
-        if (!command.profile().includeJavaContext()) {
-            return List.of();
-        }
-
         progressReporter.info("Collecting Java context...");
         List<CodeContext> contexts = new ArrayList<>();
         for (ChangedFile file : changedFiles) {
