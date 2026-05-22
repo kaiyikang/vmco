@@ -18,6 +18,7 @@ TEMPLATE_RELATIVE_PATH = Path("prompts") / TEMPLATE_NAME / f"{TEMPLATE_VERSION}.
 OUTPUT_DIR = ".llm"
 REQUEST_TIMEOUT_SECONDS = 30
 MAX_JIRA_JSON_CHARS = 20_000
+DOTENV_FILE = ".env"
 
 
 def fail(message):
@@ -41,10 +42,41 @@ def resolve_repo_root():
     return Path(result.stdout.strip()).resolve()
 
 
-def require_env(name):
+def load_dotenv(repo_root):
+    dotenv_path = repo_root / DOTENV_FILE
+    if not dotenv_path.is_file():
+        return {}
+
+    values = {}
+    lines = dotenv_path.read_text(encoding="utf-8").splitlines()
+    for line_number, raw_line in enumerate(lines, 1):
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        if "=" not in line:
+            raise RuntimeError(f"invalid .env line {line_number}: expected KEY=VALUE")
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise RuntimeError(f"invalid .env line {line_number}: invalid variable name")
+
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {"'", '"'}:
+            value = value[1:-1]
+        values[key] = value
+
+    return values
+
+
+def require_config(name, dotenv_values):
     value = os.environ.get(name, "").strip()
     if not value:
-        raise RuntimeError(f"required environment variable {name} is missing")
+        value = dotenv_values.get(name, "").strip()
+    if not value:
+        raise RuntimeError(f"required configuration {name} is missing from environment and .env")
     return value
 
 
@@ -149,8 +181,9 @@ def main(argv):
 
     try:
         repo_root = resolve_repo_root()
-        jira_token = require_env("JIRA_TOKEN")
-        jira_url_template = require_env("JIRA_URL_TEMPLATE")
+        dotenv_values = load_dotenv(repo_root)
+        jira_token = require_config("JIRA_TOKEN", dotenv_values)
+        jira_url_template = require_config("JIRA_URL_TEMPLATE", dotenv_values)
         ticket_url = build_ticket_url(jira_url_template, ticket_id)
         jira_json = fetch_jira_json(ticket_url, jira_token)
         prompt = render_prompt(repo_root, ticket_id, ticket_url, jira_json)

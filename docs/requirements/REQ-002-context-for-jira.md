@@ -28,7 +28,7 @@ The generated prompt should help Copilot answer:
 1. The user opens a target repository root.
 2. The user runs `python3 bin/context-for-jira.py <ticket-id>`.
 3. VMCO reads the JIRA token and JIRA URL template from environment
-   configuration.
+   configuration or the repository root `.env` file.
 4. VMCO builds the ticket URL from the template and ticket ID.
 5. VMCO fetches the ticket JSON.
 6. VMCO writes a timestamped prompt file into `.llm/`.
@@ -72,6 +72,18 @@ Required configuration:
 - `JIRA_TOKEN`: bearer token used to access JIRA.
 - `JIRA_URL_TEMPLATE`: URL template containing a placeholder for the ticket ID.
 
+The script must read these values from process environment variables first. If a
+value is missing from the process environment, the script may read it from a
+repository root `.env` file.
+
+The MVP `.env` parser only needs to support:
+
+- `KEY=VALUE`
+- `export KEY=VALUE`
+- Blank lines.
+- Full-line comments starting with `#`.
+- Single-quoted or double-quoted values.
+
 The URL template must use `{ticket}` as the ticket ID placeholder.
 
 Potential future configuration:
@@ -80,7 +92,9 @@ Potential future configuration:
 - Proxy configuration.
 
 The script must print a clear error and exit non-zero when `JIRA_TOKEN` or
-`JIRA_URL_TEMPLATE` is missing.
+`JIRA_URL_TEMPLATE` is missing from both the process environment and `.env`.
+The error should identify the missing configuration name without printing any
+secret values.
 
 The script must not print or write `JIRA_TOKEN` into generated prompt files,
 error messages, logs, or metadata.
