@@ -8,6 +8,8 @@ target/
 
 # Logs
 *.log
+__pycache__/
+*.pyc
 
 # BlueJ files
 *.ctxt
@@ -24,6 +26,7 @@ target/
 *.tar.gz
 *.rar
 .env
+.llm/
 
 # JVM crash logs
 hs_err_pid*

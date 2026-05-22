@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-BASE_BRANCH="${1:-main}"
-OUT_DIR="${2:-.llm-review}"
+BASE_BRANCH="${1:-master}"
+OUT_DIR="${2:-.llm}"
 OUT_FILE="$OUT_DIR/review-instruction.md"
 
 if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
