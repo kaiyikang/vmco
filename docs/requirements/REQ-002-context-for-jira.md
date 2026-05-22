@@ -146,7 +146,8 @@ file must include:
 This makes prompt updates easier to review and makes generated files easier to
 debug.
 
-The generated prompt file must start with a fixed metadata block containing:
+The generated prompt file must start with a fixed frontmatter metadata block
+containing:
 
 - Ticket ID.
 - Ticket URL.
@@ -155,6 +156,9 @@ The generated prompt file must start with a fixed metadata block containing:
 - Prompt template name.
 - Prompt template version.
 - Prompt template path.
+
+The generated prompt body must not repeat these metadata fields in a separate
+metadata section.
 
 The generated prompt file must include:
 
@@ -225,7 +229,8 @@ The report should not include:
 - The JIRA request uses a fixed 30 second timeout.
 - The embedded JIRA JSON content is capped at 20,000 characters and clearly
   marked when truncated.
-- The generated file starts with the required metadata block.
+- The generated file starts with the required frontmatter metadata block and
+  does not repeat it in the body.
 - The generated file identifies the prompt template name, version, and path used
   to create it.
 - The generated instructions constrain Copilot to context collection
