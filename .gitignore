@@ -23,6 +23,7 @@ target/
 *.zip
 *.tar.gz
 *.rar
+.env
 
 # JVM crash logs
 hs_err_pid*

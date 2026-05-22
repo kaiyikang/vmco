@@ -1,9 +1,0 @@
-#!/usr/bin/env sh
-set -eu
-
-ROOT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-JAR="$ROOT_DIR/target/reviewm-0.1.0-SNAPSHOT.jar"
-
-(cd "$ROOT_DIR" && mvn -q -DskipTests package)
-
-exec java -jar "$JAR" "$@"
