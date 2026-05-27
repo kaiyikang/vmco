@@ -4,133 +4,83 @@
 - Status: draft
 - Scope: PR review prompt generation
 
-## Background
+## Purpose
 
-VMCO provides external context files for IntelliJ Copilot. Because the Copilot
-plugin cannot reliably call external tools by itself, VMCO runs outside the IDE,
-collects repository information, and writes a prompt file that Copilot can read
-in agent mode.
+PR Reviewer generates a prompt file that lets IntelliJ Copilot Agent review
+branch changes when the plugin cannot gather Git context itself. The prompt
+keeps Copilot focused on production behavior, test coverage, configuration
+impact, and concrete risk.
 
-The PR Reviewer use case packages branch changes into a focused review request.
-It should help Copilot review production behavior changes without wasting context
-on broad style feedback or unrelated files.
+## Workflow
 
-## Goal
+1. The user opens any directory inside a target Git repository.
+2. The user runs `bin/create-llm-review-diffs.sh [base-branch] [output-dir]`.
+3. VMCO resolves the repository root and compares `<base-branch>...HEAD`.
+4. VMCO writes `<output-dir>/review-instruction.md`.
+5. The user asks Copilot Agent to read that file first.
+6. Copilot inspects referenced diffs/tests and returns one concise Markdown
+   review report.
 
-Generate one timestamped prompt file that lets Copilot produce a concise pull
-request review report.
+Defaults:
 
-The report must answer:
-
-- What core production behavior changed?
-- Are those changes protected by tests?
-- Are configuration changes correct and covered?
-- Which risks are blocker, major, minor, or nit?
-- What exact code or test changes should be made?
-
-## User Workflow
-
-1. The user opens a target Git repository root.
-2. The user runs the PR Reviewer script from the repository root.
-3. The user optionally passes a base branch; if omitted, the default is
-   `master`.
-4. VMCO fetches the latest base branch state before building the prompt.
-5. VMCO writes a timestamped prompt file into `.llm/`.
-6. The user opens IntelliJ Copilot in agent mode.
-7. Copilot reads the generated prompt file and inspects the referenced files and
-   diffs.
-8. Copilot outputs one review report only.
+- `base-branch`: `master`
+- `output-dir`: `.llm`
 
 ## Inputs
 
 - Required: current Git repository.
-- Optional: base branch name.
-- Default base branch: `master`.
-- Optional future extension: output directory override, while keeping `.llm/` as
-  the default.
+- Optional: base branch.
+- Optional: output directory.
 
-## Git And Diff Requirements
+## Diff And File Selection
 
-- VMCO must verify that the current working directory is inside a Git repository.
-- VMCO must resolve and operate from the repository root.
-- VMCO must fetch the latest remote state for the selected base branch when a
-  remote is available.
-- VMCO must compare the current branch against the base branch using PR-style
-  merge-base semantics, equivalent to `<base>...HEAD`.
-- VMCO must collect a changed-file overview before collecting detailed context.
-- VMCO must avoid embedding full diffs for every changed file by default, because
-  large diffs can exceed the model context budget.
-- VMCO must include enough commands or references for Copilot to inspect exact
-  diffs on demand.
+VMCO must:
 
-## File Selection Requirements
+- Verify that the current working directory is inside a Git repository.
+- Operate from the repository root.
+- Use PR-style merge-base diff semantics, equivalent to `<base>...HEAD`.
+- Include a changed-file overview and diff stat.
+- Avoid embedding full diffs by default; include commands for exact diff
+  inspection instead.
 
-The generated prompt should prioritize core production and configuration changes.
+Primary review targets are changed production or configuration files. The
+Java/Maven MVP includes:
 
-Include:
+- Java, XML, YAML, YML, and properties files under `src/main/`.
+- `pom.xml` and `application.{yaml,yml,properties}`.
+- Helm/deployment files such as `values.yaml`, `values.yml`, `values.xml`,
+  `helm/*.yaml`, `helm/*.yml`, `templates/*.yaml`, and `templates/*.yml`.
 
-- Production source files.
-- Application configuration files.
-- Build files that can affect runtime behavior.
-- Deployment or Helm configuration files.
-- Mapper, DTO, entity, controller, resource, adapter, use case, and service
-  files when present.
+Exclude from the primary target list:
 
-Initial Java/Maven MVP behavior:
-
-- Treat Java, XML, YAML, YML, and properties files under `src/main/` as core
-  production or configuration candidates.
-- Treat `pom.xml`, `application.yaml`, `application.yml`, and
-  `application.properties` as core configuration or build candidates.
-- Treat Helm and deployment YAML/YML files, including `values.*`,
-  `helm/*.yaml`, `helm/*.yml`, `templates/*.yaml`, and `templates/*.yml`, as
-  core configuration candidates.
-
-Exclude by default:
-
-- Test files from the primary changed-file list.
-- Build output directories such as `target/`, `build/`, `.gradle/`, and
-  generated sources.
+- Test files.
+- Build output or generated directories such as `target/`, `build/`, `.gradle/`,
+  and `generated/`.
 - Dependency directories such as `node_modules/`.
 - Binary or media files such as `.class`, `.jar`, `.war`, `.zip`, `.png`,
   `.jpg`, `.jpeg`, `.gif`, and `.pdf`.
-- Pure formatting or documentation-only changes unless they affect generated
+- Formatting-only or documentation-only changes unless they affect generated
   behavior.
 
-## Context Requirements
+## Context Hints
 
-Each selected production or configuration file should include:
+For each primary target, the prompt should include:
 
 - File path.
-- Changed-symbol hint when the file type supports it.
-- Possible related test files.
+- Changed Java symbol hint when available.
+- Possible related Java tests when filename matching can infer them.
 - Suggested command for inspecting the exact diff.
-- Any context needed to evaluate behavior, configuration impact, and regression
-  risk.
 
-Java projects should detect related tests by filename conventions such
-as:
+Java test matching is best-effort and filename-based. It should search
+Git-tracked `src/test/**/*.java` files by exact class name and by a normalized
+keyword that may strip suffixes such as `Resource`, `Controller`, `Mapper`,
+`Adapter`, and `UseCase`. Common test suffixes include `Test`, `Tests`, `IT`,
+`ITCase`, and `IntegrationTest`.
 
-- `FooTest`
-- `FooTests`
-- `FooIT`
-- `FooITCase`
-- `FooIntegrationTest`
+Non-Java files should state that automatic test matching and Java symbol hints
+are unavailable.
 
-Related-test detection should be Java-only, best-effort, and filename-based.
-For non-Java files, the prompt should state that automatic test matching is not
-available. For Java files, VMCO should search Git-tracked `src/test/**/*.java`
-files by exact class name and by a normalized keyword. The normalized keyword may
-strip common production suffixes such as `Resource`, `Controller`, `Mapper`,
-`Adapter`, and `UseCase`.
-
-Changed-symbol hints should also be Java-only and heuristic. They may be derived
-from changed diff lines that mention Java declarations, visibility modifiers,
-common return or field types, or common Spring mapping annotations. The prompt
-must make clear that Copilot should inspect the exact diff when the hint is
-missing, incomplete, or ambiguous.
-
-## Prompt Output Requirements
+## Prompt File Requirements
 
 The generated prompt file must include:
 
@@ -138,23 +88,16 @@ The generated prompt file must include:
 - Base branch.
 - Changed-file overview.
 - Diff stat.
-- Core production/configuration files changed.
+- Primary production/configuration targets.
 - Related-test hints.
-- Explicit review instructions.
-- Explicit output constraints.
+- Review instructions and output constraints.
 
-The file name must be timestamped to avoid overwriting previous generated
-prompts.
+If no primary targets are detected, VMCO must still generate the prompt and state
+that the primary review target list is empty.
 
-The default output location must be `.llm/`.
+## Copilot Report Constraints
 
-If no core production or configuration files are detected, VMCO must still
-generate the prompt file and explicitly state that the primary review target
-list is empty.
-
-## Copilot Output Constraints
-
-The prompt must instruct Copilot to output one concise Markdown review report.
+The prompt must instruct Copilot to produce one concise Markdown report.
 
 Each finding must include:
 
@@ -166,44 +109,35 @@ Each finding must include:
 - Missing or weak test coverage.
 - Suggested fix or suggested test.
 
-The prompt must also instruct Copilot to:
-
-- Focus on behavior changes, missing tests, weak assertions, regression risk,
-  API compatibility, mapper/DTO/entity field mistakes, null or default behavior,
-  and configuration impact.
-- Prefer concrete findings over generic advice.
-- Avoid broad style review.
-- Avoid comments on formatting, import order, or naming unless they hide a real
-  defect.
-- Explain missing evidence before raising speculative concerns.
-- Briefly say so when a changed behavior is already well covered by tests.
-- State explicitly when no blocker or major issue is found.
+The report should focus on behavior changes, missing tests, weak assertions,
+regression risk, API compatibility, mapper/DTO/entity field mistakes, null or
+default behavior, and configuration impact. It should avoid broad style review
+and formatting comments unless they hide a real defect.
 
 ## Implementation Requirements
 
-- The MVP implementation should be written in Python.
-- The implementation should prefer the Python standard library and Git CLI
-  commands, and should avoid external runtime dependencies unless they are
-  explicitly justified.
+- The MVP entry point is `bin/create-llm-review-diffs.sh`.
+- The implementation should use Bash, Git CLI, and common Unix tools.
+- Third-party runtime dependencies should be avoided unless explicitly
+  justified.
 
 ## Acceptance Criteria
 
-- Running the script from a Git repository root creates one timestamped file in
-  `.llm/`.
+- Running the script from a Git repository creates or overwrites
+  `<output-dir>/review-instruction.md`.
 - The generated file contains the selected base branch, repository root,
   changed-file overview, and diff stat.
-- Non-core files are filtered out of the primary review target list,
-  and related tests are listed when they can be inferred by filename.
-- If no core production or configuration files are detected, the prompt is still
-  generated and clearly states that no primary review targets were found.
-- The generated instructions constrain Copilot to one stable review
-  report format.
+- Non-core files are filtered out of the primary review target list.
+- Related tests are listed when they can be inferred by Java filename matching.
+- If no primary targets are detected, the prompt clearly says so.
+- The generated instructions constrain Copilot to one stable review report.
 
 ## Open Decisions
 
-- Whether the default base branch should remain `master` or become configurable
-  per repository.
-- Whether VMCO should support both `main` and `master` fallback detection.
-- Whether full diffs should ever be embedded automatically for small changes.
-- Whether test files should be excluded entirely or shown in a separate
-  supporting section.
+- Whether the default base branch should remain `master` or be auto-detected per
+  repository.
+- Whether VMCO should fetch the latest remote base branch before generating the
+  prompt.
+- Whether small diffs should ever be embedded automatically.
+- Whether changed test files should appear in a separate supporting section.
+- Whether PR Reviewer output should become timestamped like Context for JIRA.

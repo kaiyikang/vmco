@@ -2,11 +2,10 @@
 
 Sprachen: [English](README.md) | Deutsch | [中文](README.zh-CN.md)
 
-VMCO erzeugt Kontext-Prompts, die IntelliJ Copilot lesen kann.
+VMCO erstellt Prompt-Dateien für IntelliJ Copilot Agent, wenn das IDE-Plugin
+Repository-, Diff- oder Ticket-Kontext nicht selbst sammeln kann.
 
-Wenn das Copilot-Plugin externe Werkzeuge nicht direkt aufrufen kann, sammelt VMCO Repository-, Branch-Diff- oder Ticket-Informationen außerhalb der IDE und schreibt eine Prompt-Datei für Copilot Agent.
-
-## Schnellstart
+## PR Reviewer
 
 Rufe das VMCO-Skript aus dem Root-Verzeichnis des Projekts auf, das analysiert werden soll:
 
@@ -18,19 +17,24 @@ Standardwerte:
 
 - `base-branch`: `master`
 - `output-dir`: `.llm`
-- Ausgabedatei: `.llm/review-instruction.md`
+- Ausgabedatei: `<output-dir>/review-instruction.md`
 
 Wechsle danach IntelliJ Copilot in den Agent-Modus und lasse Copilot zuerst die erzeugte Datei lesen.
 
-## Anwendungsfälle
+## Context For JIRA
 
-- PR Reviewer: erzeugt einen Kontext-Prompt für Pull-Request-Reviews.
-- Context for JIRA: erzeugt einen Kontext-Prompt aus einem JIRA-Ticket.
+Setze `JIRA_TOKEN` und `JIRA_URL_TEMPLATE` in der Umgebung oder in der `.env`
+Datei im Ziel-Repository. Die URL-Vorlage muss `{ticket}` enthalten.
+
+```bash
+python3 /path/to/vmco/bin/context-for-jira.py <ticket-id>
+```
+
+Das Skript schreibt `.llm/context-for-jira-{ticket}-{timestamp}.md`.
 
 ## Designprinzipien
 
-- Externe Skripte sammeln Fakten und erzeugen Prompts.
-- Copilot liest den Prompt und setzt die Analyse im Repository fort.
-- Prompts sollen aus einer Datei bestehen, nachvollziehbar sein und klare Einschränkungen enthalten.
-- Große Diffs sollen standardmäßig vermieden werden, um Kontext zu sparen.
-- Prompts sollen Versionsinformationen enthalten.
+- Skripte sammeln Fakten außerhalb der IDE; Copilot analysiert im Repository.
+- Generierte Prompts sind einzelne Dateien, nachvollziehbar und klar begrenzt.
+- Große Diffs werden standardmäßig referenziert statt eingebettet.
+- Versionierte Prompt-Vorlagen werden genutzt, wenn stabile Review-Historie nötig ist.

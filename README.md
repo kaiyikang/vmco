@@ -2,11 +2,10 @@
 
 Languages: English | [Deutsch](README.de.md) | [中文](README.zh-CN.md)
 
-VMCO generates context prompts that IntelliJ Copilot can read.
+VMCO creates prompt files for IntelliJ Copilot Agent when the IDE plugin cannot
+collect external repository, diff, or ticket context by itself.
 
-When the Copilot plugin cannot call external tools directly, VMCO collects repository, branch diff, or ticket information outside the IDE and writes a prompt file for Copilot Agent.
-
-## Quick Start
+## PR Reviewer
 
 From the root directory of the project you want to analyze, call the VMCO script:
 
@@ -18,19 +17,25 @@ Defaults:
 
 - `base-branch`: `master`
 - `output-dir`: `.llm`
-- output file: `.llm/review-instruction.md`
+- output file: `<output-dir>/review-instruction.md`
 
-After generation, switch IntelliJ Copilot to Agent mode and ask it to read the output file first.
+After generation, switch IntelliJ Copilot to Agent mode and ask it to read the
+output file first.
 
-## Use Cases
+## Context For JIRA
 
-- PR Reviewer: generates a context prompt for pull request review.
-- Context for JIRA: generates a context collection prompt from a JIRA ticket.
+Set `JIRA_TOKEN` and `JIRA_URL_TEMPLATE` in the environment or in the target
+repository `.env` file. The URL template must contain `{ticket}`.
+
+```bash
+python3 /path/to/vmco/bin/context-for-jira.py <ticket-id>
+```
+
+The script writes `.llm/context-for-jira-{ticket}-{timestamp}.md`.
 
 ## Design Principles
 
-- External scripts collect facts and generate prompts.
-- Copilot reads the prompt and continues analysis inside the repository.
-- Prompts should be single-file, traceable, and explicit about constraints.
-- Large diffs should be avoided by default to reduce context waste.
-- Prompts should include version information.
+- Scripts collect facts outside the IDE; Copilot analyzes inside the repository.
+- Generated prompts are single-file, traceable, and explicit about constraints.
+- Large diffs are referenced instead of embedded by default.
+- Versioned prompt templates are used when prompts need stable review history.
